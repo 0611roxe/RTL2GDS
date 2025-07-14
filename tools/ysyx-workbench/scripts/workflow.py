@@ -2,109 +2,135 @@ import argparse
 import sys
 import os
 from pathlib import Path
+from typing import Optional
 
 try:
     from simulator import Simulator
     from cpu_test import CpuTestLogParser
     from benchmark import BenchmarkLogParser
 except ImportError as e:
-    print(f"Error: Could not import required classes.", file=sys.stderr)
-    print(f"Make sure 'simulator.py', 'cpu_test.py', and 'benchmark.py' are accessible.", file=sys.stderr)
+    print(f"Error: Could not import a required class. Is the script path configured correctly?", file=sys.stderr)
     print(f"Details: {e}", file=sys.stderr)
     sys.exit(1)
 
+import re
+
 class MainWorkflow:
-    """
-    Orchestrates the entire Test -> Parse workflow.
-    """
-    def __init__(self, log_dir: Path, rtl_file: Path = None, mainargs: str = 'train', max_jobs: int = 4):
-        self.log_dir = log_dir
-        self.simulator = Simulator(rtl_file=rtl_file, max_parallel_jobs=max_jobs)
+    def __init__(self, rtl_file: Path, stage: str, mainargs: str, tests: list[str], stage_template_file: Optional[Path] = None):
+        self.rtl_file = rtl_file
+        self.stage = stage
         self.mainargs = mainargs
+        self.tests_to_run = tests
+        self.stage_template_file = stage_template_file
 
-    def run_parsers(self, executed_tests: list[str]):
-        tasks_to_parse = set()
-        if "cpu-tests" in executed_tests:
-            tasks_to_parse.add("cpu-test")
+        try:
+            self.result_dir = Path(os.environ['RESULT_DIR'])
+        except KeyError as e:
+            print(f"Error: Required environment variable {e} is not set.", file=sys.stderr)
+            print("The 'step_processor' should have injected this variable. Check your step.yaml.", file=sys.stderr)
+            sys.exit(1)
         
-        benchmark_tests_executed = any(t in executed_tests for t in ["coremark", "dhrystone", "microbench"])
-        if benchmark_tests_executed:
-            tasks_to_parse.add("benchmark")
+        self.simulator: Optional[Simulator] = None
 
-        if not tasks_to_parse:
-            print("No logs to parse based on the tests that were run.")
-            return
+    def _replace_top_name_in_template(self) -> bool:
+        top_name = os.environ.get("TOP_NAME", "ysyx_00000000")
+        if not top_name:
+            print("Error: Environment variable TOP_NAME must be set in D stage.", file=sys.stderr)
+            return False
+        if not self.stage_template_file or not self.stage_template_file.is_file():
+            print("Error: --Dstage_template must be provided and point to an existing file in D stage.", file=sys.stderr)
+            return False
+        try:
+            text = self.stage_template_file.read_text()
+            new_text, count = re.subn(r'ysyx_\d{8,}', top_name, text)
+            if count == 0:
+                print(f"Warning: No ysyx_XXXXXXXX found in {self.stage_template_file} to replace.", file=sys.stderr)
+            self.stage_template_file.write_text(new_text)
+            print(f"Replaced top module name in {self.stage_template_file} with {top_name}")
+            self.top_name = top_name
+            return True
+        except Exception as e:
+            print(f"Error replacing top_name in template: {e}", file=sys.stderr)
+            return False
 
-        parser_map = {
-            "cpu-test": CpuTestLogParser,
-            "benchmark": BenchmarkLogParser
-        }
+    def _prepare_rtl_for_stage(self) -> bool:
+        """If STAGE is 'D', only replace top module name, otherwise skip."""
+        if self.stage.upper() != 'D':
+            print(f"STAGE={self.stage}: Skipping top_name replacement.")
+            return True
 
-        for task_name in tasks_to_parse:
-            parser_class = parser_map[task_name]
-            print(f"\nRunning parser for: {task_name}")
-            try:
-                parser_instance = parser_class(log_dir=str(self.log_dir))
-                parser_instance.parse()
-            except Exception as e:
-                print(f"Error while running parser for {task_name}: {e}", file=sys.stderr)
+        print("STAGE=D: Starting top_name replacement in template file.")
+        return self._replace_top_name_in_template()
 
-    def execute(self, tests_arg: list[str]) -> bool:
+    def execute(self) -> bool:
+        if not self._prepare_rtl_for_stage():
+            print("\nAborting workflow due to RTL preparation failure.", file=sys.stderr)
+            sys.exit(1)
+
+        self.simulator = Simulator(
+            rtl_file=self.rtl_file, 
+            top_name=os.environ.get("TOP_NAME", "ysyx_00000000")
+        )
         if not self.simulator._build_simulator():
             print("\nAborting workflow due to simulator build failure.", file=sys.stderr)
             sys.exit(1)
 
-        if 'all' in tests_arg:
+        if 'all' in self.tests_to_run:
             selected_tests = self.simulator._discover_available_tests()
         else:
-            selected_tests = tests_arg
+            selected_tests = self.tests_to_run
         
         if not selected_tests:
             print("\nNo tests were selected or discovered. Workflow finished.")
             return True 
 
         print(f"\nWorkflow will execute the following tests: {', '.join(selected_tests)}")
-        
-        tests_passed = self.simulator.run_tests(
-            tests_to_run=selected_tests, 
-            mainargs=self.mainargs
-        )
+        tests_passed = self.simulator.run_tests(tests_to_run=selected_tests, mainargs=self.mainargs)
 
         if not tests_passed:
             print("\nWarning: Some tests failed. Proceeding with log parsing anyway.", file=sys.stderr)
         
         self.run_parsers(executed_tests=selected_tests)
-
         return tests_passed
 
+    def run_parsers(self, executed_tests: list[str]):
+        tasks_to_parse = set()
+        if any(t in executed_tests for t in ["cpu-tests"]):
+            tasks_to_parse.add("cpu-test")
+        if any(t in executed_tests for t in ["coremark", "dhrystone", "microbench"]):
+            tasks_to_parse.add("benchmark")
+
+        parser_map = {"cpu-test": CpuTestLogParser, "benchmark": BenchmarkLogParser}
+        for task in tasks_to_parse:
+            print(f"\nRunning parser for: {task}")
+            parser_instance = parser_map[task](log_dir=str(self.result_dir))
+            parser_instance.parse()
+
 def main():
-    parser = argparse.ArgumentParser(
-        description="A unified workflow to run tests and then parse their logs."
-    )
-    test_choices = list(Simulator._AVAILABLE_TESTS.keys()) + ['all']
-    
-    parser.add_argument('--log_dir', type=Path, default=Path(os.environ.get("RESULT_DIR", ".")), help="Directory for logs and JSON results.")
-    parser.add_argument('--tests', nargs='*', choices=test_choices, default=['all'], help='Specify tests to run. Default="all" for auto-discovery.')
-    parser.add_argument('--rtl_file', type=Path, help='Path to the RTL file for simulation')
-    parser.add_argument('--mainargs', default='train', help='mainargs for microbench (default: train)')
-    parser.add_argument('--max-parallel-jobs', type=int, default=4, help='Maximum number of tests to run in parallel')
-    
+    parser = argparse.ArgumentParser(description="A unified workflow to run tests and then parse their logs.")
+    parser.add_argument('--rtl_file', type=Path, required=True)
+    parser.add_argument('--stage', type=str, required=True, choices=['B', 'D'])
+    parser.add_argument('--tests', nargs='*', default=['all'])
+    parser.add_argument('--mainargs', type=str, default='train')
+    parser.add_argument('--Dstage_template', type=Path, default=None, help='Template file for D stage')
+
     args = parser.parse_args()
 
     workflow = MainWorkflow(
-        log_dir=args.log_dir,
         rtl_file=args.rtl_file,
+        stage=args.stage,
         mainargs=args.mainargs,
-        max_jobs=args.max_parallel_jobs
+        tests=args.tests,
+        stage_template_file=args.Dstage_template
     )
     
-    all_tests_succeeded = workflow.execute(tests_arg=args.tests)
+    all_tests_succeeded = workflow.execute()
 
     if all_tests_succeeded:
-        print("\nWorkflow completed successfully (All tests passed).")
+        print("\nWorkflow completed successfully.")
         sys.exit(0)
     else:
-        print("\nWorkflow completed, but some tests failed. Please review the logs and JSON results.", file=sys.stderr)
+        print("\nWorkflow completed, but some tests failed.", file=sys.stderr)
         sys.exit(1)
 
 if __name__ == "__main__":

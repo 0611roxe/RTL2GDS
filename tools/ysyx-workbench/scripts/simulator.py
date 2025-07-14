@@ -7,7 +7,6 @@ from typing import List, Dict, Optional, Tuple
 import concurrent.futures
 import math
 
-# --- 环境检查 (保持不变) ---
 try:
     YSYX_HOME = Path(os.environ["YSYX_HOME"])
     AM_KERNELS_HOME = Path(os.environ["AM_KERNELS_HOME"])
@@ -16,6 +15,7 @@ try:
     ARCH = os.environ.get("ARCH", "riscv32e-ysyxsoc")
     CROSS_COMPILE = os.environ.get("CROSS_COMPILE", "riscv64-linux-gnu-")
     CPU_COUNT = os.cpu_count() or 1
+    # CPU_COUNT = 1
 except KeyError as e:
     print(f"Error: Environment variable {e} is not set. Please source your environment setup script.", file=sys.stderr)
     sys.exit(1)
@@ -45,8 +45,9 @@ class Simulator:
         },
     }
 
-    def __init__(self, rtl_file: Optional[Path] = None, max_parallel_jobs: int = 4):
+    def __init__(self, rtl_file: Optional[Path] = None, top_name: str = None, max_parallel_jobs: int = 4):
         self.rtl_file = rtl_file
+        self.top_name = top_name 
         self.max_parallel_jobs = min(max_parallel_jobs, CPU_COUNT)
         self._validate_paths()
 
@@ -146,15 +147,14 @@ class Simulator:
                     test_results[title] = False
                     all_passed = False
 
-        print("\nFinal Test Summary:")
-        sorted_results = {name: test_results.get(name, False) for name in tests_to_run}
-        for name, passed in sorted_results.items():
-            status = "PASSED" if passed else "FAILED"
-            print(f"- {name:<12}: {status}")
+        # print("\nFinal Test Summary:")
+        # sorted_results = {name: test_results.get(name, False) for name in tests_to_run}
+        # for name, passed in sorted_results.items():
+        #     status = "PASSED" if passed else "FAILED"
+        #     print(f"- {name:<12}: {status}")
         
         return all_passed
 
-    # 我们保留 main 方法，以防您需要独立运行此脚本进行调试
     @classmethod
     def main(cls):
         parser = argparse.ArgumentParser(description="Run am-kernels tests. Auto-discovers tests if 'all' is specified.")
