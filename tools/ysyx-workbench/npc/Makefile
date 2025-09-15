@@ -66,6 +66,7 @@ VERILATOR_FLAG += -I$(NPC_HOME)/vsrc
 VERILATOR_FLAG += -I$(SOC_MUX)
 VERILATOR_FLAG += -I$(SOC_MUX)/src/soc
 VERILATOR_FLAG += -I$(SOC_MUX)/src/core
+VERILATOR_FLAG += -I$(ysyxSOC_DIR)
 VERILATOR_FLAG += --cc -j `nproc` -O3  --exe --build  -Wno-DECLFILENAME --timescale "1ns/1ns" --no-timing --trace-fst $(VERILATOR_CFLAGS) $(VERILATOR_LDFLAGS) --top-module $(TOP_NAME) -I./vsrc
 VERILATOR_FLAG += --threads $(RUN_THREADS)
 # VERILATOR_FLAG += -no-timing
