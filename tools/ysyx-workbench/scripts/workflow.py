@@ -32,6 +32,34 @@ class MainWorkflow:
         
         self.simulator: Optional[Simulator] = None
 
+        soc_home = os.environ.get("SOC_HOME")
+        if soc_home is None:
+            raise RuntimeError("Environment variable SOC_HOME is not set")
+        self.soc_v_path = Path(soc_home) / "ysyxSoCFull.v"
+        self._soc_v_backup = None
+
+    def _replace_top_name_in_soc_v(self):
+        if not self.soc_v_path.exists():
+            print(f"Warning: {self.soc_v_path} not found, skip replacement.", file=sys.stderr)
+            return
+        text = self.soc_v_path.read_text()
+        self._soc_v_backup = text 
+        if self.stage.upper() == "D":
+            new_top = "DSTAGECPU"
+        else:
+            new_top = os.environ.get("TOP_NAME", "ysyx_00000000")
+        new_text, count = re.subn(r'ysyx_00000000', new_top, text)
+        if count > 0:
+            self.soc_v_path.write_text(new_text)
+            print(f"Replaced ysyx_00000000 with {new_top} in {self.soc_v_path}")
+        else:
+            print(f"ysyx_00000000 not found in {self.soc_v_path}, no replacement made.", file=sys.stderr)
+
+    def _restore_soc_v_file(self):
+        if self._soc_v_backup is not None:
+            self.soc_v_path.write_text(self._soc_v_backup)
+            print(f"Restored {self.soc_v_path} to original ysyx_00000000.")
+
     def _replace_top_name_in_template(self) -> bool:
         top_name = os.environ.get("TOP_NAME", "ysyx_00000000")
         if not top_name:
@@ -56,42 +84,46 @@ class MainWorkflow:
     def _prepare_rtl_for_stage(self) -> bool:
         """If STAGE is 'D', only replace top module name, otherwise skip."""
         if self.stage.upper() != 'D':
-            print(f"STAGE={self.stage}: Skipping top_name replacement.")
+            print(f"STAGE={self.stage}: Skipping top_name replacement in template.")
             return True
 
         print("STAGE=D: Starting top_name replacement in template file.")
         return self._replace_top_name_in_template()
 
     def execute(self) -> bool:
-        if not self._prepare_rtl_for_stage():
-            print("\nAborting workflow due to RTL preparation failure.", file=sys.stderr)
-            sys.exit(1)
+        self._replace_top_name_in_soc_v()
+        try:
+            if not self._prepare_rtl_for_stage():
+                print("\nAborting workflow due to RTL preparation failure.", file=sys.stderr)
+                sys.exit(1)
 
-        self.simulator = Simulator(
-            rtl_file=self.rtl_file, 
-            top_name=os.environ.get("TOP_NAME", "ysyx_00000000")
-        )
-        if not self.simulator._build_simulator():
-            print("\nAborting workflow due to simulator build failure.", file=sys.stderr)
-            sys.exit(1)
+            self.simulator = Simulator(
+                rtl_file=self.rtl_file, 
+                top_name=os.environ.get("TOP_NAME", "ysyx_00000000")
+            )
+            if not self.simulator._build_simulator():
+                print("\nAborting workflow due to simulator build failure.", file=sys.stderr)
+                sys.exit(1)
 
-        if 'all' in self.tests_to_run:
-            selected_tests = self.simulator._discover_available_tests()
-        else:
-            selected_tests = self.tests_to_run
-        
-        if not selected_tests:
-            print("\nNo tests were selected or discovered. Workflow finished.")
-            return True 
+            if 'all' in self.tests_to_run:
+                selected_tests = self.simulator._discover_available_tests()
+            else:
+                selected_tests = self.tests_to_run
+            
+            if not selected_tests:
+                print("\nNo tests were selected or discovered. Workflow finished.")
+                return True 
 
-        print(f"\nWorkflow will execute the following tests: {', '.join(selected_tests)}")
-        tests_passed = self.simulator.run_tests(tests_to_run=selected_tests, mainargs=self.mainargs)
+            print(f"\nWorkflow will execute the following tests: {', '.join(selected_tests)}")
+            tests_passed = self.simulator.run_tests(tests_to_run=selected_tests, mainargs=self.mainargs)
 
-        if not tests_passed:
-            print("\nWarning: Some tests failed. Proceeding with log parsing anyway.", file=sys.stderr)
-        
-        self.run_parsers(executed_tests=selected_tests)
-        return tests_passed
+            if not tests_passed:
+                print("\nWarning: Some tests failed. Proceeding with log parsing anyway.", file=sys.stderr)
+            
+            self.run_parsers(executed_tests=selected_tests)
+            return tests_passed
+        finally:
+            self._restore_soc_v_file()
 
     def run_parsers(self, executed_tests: list[str]):
         tasks_to_parse = set()

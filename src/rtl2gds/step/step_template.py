@@ -471,8 +471,9 @@ if __name__ == "__main__":
 
     test_benchmark = {
         "RTL_FILE": rtl_file,
-        "STAGE": "D",
-        "ARCH": "minirv-minirv",
+        "TOP_NAME": top_name,
+        "STAGE": "D",  # or "B"
+        "ARCH": "minirv-minirv", # or riscv32e-ysyxsoc
         "MAX_SIMULATE_TIME": "1000000000",
         "TESTS": "cpu-tests",  # or "coremark", "dhrystone", "cpu-tests", "all"
         "MICROBENCH_ARGS": "test",  # or "train"
