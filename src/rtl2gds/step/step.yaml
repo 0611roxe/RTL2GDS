@@ -55,12 +55,9 @@ benchmark:
     - ${TESTS}
     - --mainargs=${MICROBENCH_ARGS}
     - --stage=${STAGE}
-    - --Dstage_template
-    - ${DSTAGE_TEMPLATE}
   input_env:
     files:
       RTL_FILE: top.v
-      DSTAGE_TEMPLATE: ${YSYX_HOME}/ysyxSoC/DSTAGECPU.sv
     parameters:
       MAX_SIMULATE_TIME: 1000000000
       TOP_NAME: NPC

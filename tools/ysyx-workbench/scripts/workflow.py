@@ -38,12 +38,15 @@ class MainWorkflow:
         self.soc_v_path = Path(soc_home) / "ysyxSoCFull.v"
         self._soc_v_backup = None
 
+        self.dstagecpu_sv_path = Path(soc_home) / "DSTAGECPU.sv"
+        self._dstagecpu_sv_backup = None
+
     def _replace_top_name_in_soc_v(self):
         if not self.soc_v_path.exists():
             print(f"Warning: {self.soc_v_path} not found, skip replacement.", file=sys.stderr)
             return
         text = self.soc_v_path.read_text()
-        self._soc_v_backup = text 
+        self._soc_v_backup = text
         if self.stage.upper() == "D":
             new_top = "DSTAGECPU"
         else:
@@ -60,43 +63,30 @@ class MainWorkflow:
             self.soc_v_path.write_text(self._soc_v_backup)
             print(f"Restored {self.soc_v_path} to original ysyx_00000000.")
 
-    def _replace_top_name_in_template(self) -> bool:
-        top_name = os.environ.get("TOP_NAME", "ysyx_00000000")
-        if not top_name:
-            print("Error: Environment variable TOP_NAME must be set in D stage.", file=sys.stderr)
-            return False
-        if not self.stage_template_file or not self.stage_template_file.is_file():
-            print("Error: --Dstage_template must be provided and point to an existing file in D stage.", file=sys.stderr)
-            return False
-        try:
-            text = self.stage_template_file.read_text()
-            new_text, count = re.subn(r'ysyx_\d{8,}', top_name, text)
-            if count == 0:
-                print(f"Warning: No ysyx_XXXXXXXX found in {self.stage_template_file} to replace.", file=sys.stderr)
-            self.stage_template_file.write_text(new_text)
-            print(f"Replaced top module name in {self.stage_template_file} with {top_name}")
-            self.top_name = top_name
-            return True
-        except Exception as e:
-            print(f"Error replacing top_name in template: {e}", file=sys.stderr)
-            return False
+    def _replace_top_name_in_dstagecpu(self):
+        if not self.dstagecpu_sv_path.exists():
+            print(f"Warning: {self.dstagecpu_sv_path} not found, skip replacement.", file=sys.stderr)
+            return
+        text = self.dstagecpu_sv_path.read_text()
+        self._dstagecpu_sv_backup = text
+        new_top = os.environ.get("TOP_NAME", "ysyx_00000000")
+        new_text, count = re.subn(r'ysyx_00000000', new_top, text)
+        if count > 0:
+            self.dstagecpu_sv_path.write_text(new_text)
+            print(f"Replaced ysyx_00000000 with {new_top} in {self.dstagecpu_sv_path}")
+        else:
+            print(f"ysyx_00000000 not found in {self.dstagecpu_sv_path}, no replacement made.", file=sys.stderr)
 
-    def _prepare_rtl_for_stage(self) -> bool:
-        """If STAGE is 'D', only replace top module name, otherwise skip."""
-        if self.stage.upper() != 'D':
-            print(f"STAGE={self.stage}: Skipping top_name replacement in template.")
-            return True
-
-        print("STAGE=D: Starting top_name replacement in template file.")
-        return self._replace_top_name_in_template()
+    def _restore_dstagecpu_file(self):
+        if self._dstagecpu_sv_backup is not None:
+            self.dstagecpu_sv_path.write_text(self._dstagecpu_sv_backup)
+            print(f"Restored {self.dstagecpu_sv_path} to original ysyx_00000000.")
 
     def execute(self) -> bool:
+        if self.stage.upper() == 'D':
+            self._replace_top_name_in_dstagecpu()
         self._replace_top_name_in_soc_v()
         try:
-            if not self._prepare_rtl_for_stage():
-                print("\nAborting workflow due to RTL preparation failure.", file=sys.stderr)
-                sys.exit(1)
-
             self.simulator = Simulator(
                 rtl_file=self.rtl_file, 
                 top_name=os.environ.get("TOP_NAME", "ysyx_00000000")
@@ -123,6 +113,8 @@ class MainWorkflow:
             self.run_parsers(executed_tests=selected_tests)
             return tests_passed
         finally:
+            if self.stage.upper() == 'D':
+                self._restore_dstagecpu_file()
             self._restore_soc_v_file()
 
     def run_parsers(self, executed_tests: list[str]):
