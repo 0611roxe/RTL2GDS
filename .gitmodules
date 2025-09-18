@@ -2,3 +2,8 @@
 	path = foundry/ihp130
 	url = https://github.com/IHP-GmbH/IHP-Open-PDK.git
 	branch = main
+
+[submodule "tools/ysyx-workbench"]
+	path = tools/ysyx-workbench
+	url = git@github.com:0611roxe/ysyx-workbench.git
+	branch = CloudPlatform_SoC
