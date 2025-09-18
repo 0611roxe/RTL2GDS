@@ -68,12 +68,7 @@ benchmark:
   output_env:
     dir_template: ${OUTPUT_PREFIX}_${OUTPUT_STEP_NAME}_${OUTPUT_TOP_NAME}
     files:
-      - name: CPU_TEST_JSON
-        path: ${OUTPUT_TOP_NAME}_cpu_test.json
-        condition: "'cpu-tests' in '${TESTS}' or 'all' in '${TESTS}'"
-      - name: BENCHMARK_RESULT_JSON
-        path: ${OUTPUT_TOP_NAME}_benchmark.json
-        condition: "'coremark' in '${TESTS}' or 'dhrystone' in '${TESTS}' or 'microbench' in '${TESTS}' or 'all' in '${TESTS}'"
+      SOC_TEST_JSON: ${OUTPUT_TOP_NAME}_soc_test.json
     metrics:
       - test_pass
       - test_fail

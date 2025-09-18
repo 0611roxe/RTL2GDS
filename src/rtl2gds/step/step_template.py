@@ -64,7 +64,7 @@ class Step:
         self.input_files = self._upper_dict_key(input_files)
         self.input_parameters = self._upper_dict_key(input_parameters)
 
-        self.output_files = self._process_conditional_files(output_files_def)
+        self.output_files = self._upper_dict_key(output_files_def)
 
         self.tool_env = self._substitute_template_dict(self.tool_env, Step.r2g_template_value)
         self.default_env = self._substitute_template_dict(self.default_env, Step.r2g_template_value)
@@ -81,41 +81,6 @@ class Step:
             self.output_files,
             self.output_metrics,
         )
-
-    def _process_conditional_files(self, files_definition) -> dict:
-        final_files = {}
-        
-        if isinstance(files_definition, list):
-            for file_item in files_definition:
-                if not isinstance(file_item, dict) or "name" not in file_item or "path" not in file_item:
-                    logging.warning(f"Skipping invalid file item in list: {file_item}")
-                    continue
-
-                name = file_item["name"]
-                path = file_item["path"]
-                condition = file_item.get("condition", "True")
-
-                try:
-                    condition_met = eval(condition, {}, self.input_parameters)
-                except Exception as e:
-                    logging.warning(f"Could not evaluate condition '{condition}' for file '{name}'. Defaulting to False. Error: {e}")
-                    condition_met = False
-
-                if condition_met:
-                    final_files[name] = path
-                else:
-                    logging.debug(f"  - Condition NOT MET for '{name}'. Skipping file check.")
-
-        elif isinstance(files_definition, dict):
-            logging.debug("Processing simple file dictionary (legacy format) for output_env...")
-            final_files = files_definition
-        
-        else:
-            logging.warning(f"'files' has an unexpected type: {type(files_definition)}. Expecting list or dict.")
-            return {}
-
-        # make env upper case
-        return self._upper_dict_key(final_files)
 
     @staticmethod
     def _check_files_exist(files: dict[str, str]):
@@ -475,7 +440,7 @@ if __name__ == "__main__":
         "STAGE": "B",  # "D" or "B"
         "ARCH": "riscv32e-ysyxsoc", # minirv-minirv or riscv32e-ysyxsoc
         "MAX_SIMULATE_TIME": "1000000000",
-        "TESTS": "cpu-tests",  # or "coremark", "dhrystone", "cpu-tests", "all"
+        "TESTS": "all",  # "benchmark" or "coremark", "dhrystone", "cpu-tests", "all"
         "MICROBENCH_ARGS": "test",  # or "train"
     }
     run_step("benchmark", test_benchmark)
