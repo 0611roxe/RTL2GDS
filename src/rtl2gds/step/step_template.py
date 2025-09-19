@@ -437,9 +437,9 @@ if __name__ == "__main__":
     test_benchmark = {
         "RTL_FILE": rtl_file,
         "TOP_NAME": top_name,
-        "STAGE": "D",  # "D" or "B"
+        "STAGE": "D",  # "D" "C" or "B"
         "MAX_SIMULATE_TIME": "1000000000",
-        "TESTS": "cpu-tests",  # "benchmark" or "coremark", "dhrystone", "cpu-tests", "all"
+        "TESTS": "cpu-tests",  # "microbench" or "coremark", "dhrystone", "cpu-tests", "all"
         "MICROBENCH_ARGS": "test",  # or "train"
     }
     run_step("benchmark", test_benchmark)
