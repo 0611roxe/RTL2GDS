@@ -412,8 +412,8 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
 
     # inputs
-    rtl_file = f"{R2G_BASE_DIR}/demo/NPCsyn.sv"
-    top_name = "NPC"
+    rtl_file = f"{R2G_BASE_DIR}/demo/ysyx_22050499.v"
+    top_name = "rv_top"
     clk_port_name = "clock"
     clk_freq_mhz = "100"
     netlist_file = "minirv_nl.v"
@@ -437,7 +437,7 @@ if __name__ == "__main__":
     test_benchmark = {
         "RTL_FILE": rtl_file,
         "TOP_NAME": top_name,
-        "STAGE": "D",  # "D" "C" or "B"
+        "STAGE": "B",  # "D" "C" or "B"
         "MAX_SIMULATE_TIME": "1000000000",
         "TESTS": "cpu-tests",  # "microbench" or "coremark", "dhrystone", "cpu-tests", "all"
         "MICROBENCH_ARGS": "test",  # or "train"
