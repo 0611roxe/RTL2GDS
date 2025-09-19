@@ -62,7 +62,6 @@ benchmark:
       MAX_SIMULATE_TIME: 1000000000
       TOP_NAME: NPC
       STAGE: D
-      ARCH: minirv-minirv
       TESTS: cpu-tests
       MICROBENCH_ARGS: test
   output_env:
